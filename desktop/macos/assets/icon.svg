@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="178" y1="94" x2="850" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10243f"/>
+      <stop offset="0.55" stop-color="#235f8e"/>
+      <stop offset="1" stop-color="#4bbbc6"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="210" y1="140" x2="550" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff5d0"/>
+      <stop offset="1" stop-color="#ffc35c"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="160" y1="540" x2="860" y2="770" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff0b8"/>
+      <stop offset="1" stop-color="#a9f6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="226" fill="url(#bg)"/>
+  <circle cx="402" cy="374" r="250" fill="url(#moon)"/>
+  <circle cx="510" cy="330" r="254" fill="url(#bg)"/>
+  <path d="M170 704c95-122 209-185 342-185s247 63 342 185" fill="none" stroke="url(#bridge)" stroke-width="84" stroke-linecap="round"/>
+  <path d="M259 703h506" fill="none" stroke="#eefbff" stroke-width="34" stroke-linecap="round" opacity=".94"/>
+  <path d="M350 688v111M460 634v165M570 634v165M680 688v111" fill="none" stroke="#bcefff" stroke-width="29" stroke-linecap="round"/>
+  <circle cx="256" cy="704" r="69" fill="#fff3c4"/>
+  <circle cx="768" cy="704" r="69" fill="#a9f7ff"/>
+  <circle cx="256" cy="704" r="24" fill="#173e63"/>
+  <circle cx="768" cy="704" r="24" fill="#173e63"/>
+  <path d="M335 848h354" fill="none" stroke="#e9fbff" stroke-width="25" stroke-linecap="round" opacity=".86"/>
+</svg>

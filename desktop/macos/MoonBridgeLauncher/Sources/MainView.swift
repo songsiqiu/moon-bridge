@@ -30,6 +30,12 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 680)
+        .onAppear {
+            controller.refreshPortOwner()
+        }
+        .onChange(of: controller.settings.listenAddr) { _ in
+            controller.refreshPortOwner()
+        }
     }
 
     private var header: some View {
@@ -136,7 +142,7 @@ struct MainView: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
-                    FieldLabel("版本")
+                    FieldLabel("协议版本")
                     TextField("2023-06-01", text: provider.version)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -222,7 +228,7 @@ struct StatusPill: View {
 
     private var iconName: String {
         switch state {
-        case .running:
+        case .running, .externalRunning:
             return "checkmark.circle.fill"
         case .starting, .stopping:
             return "clock.fill"
@@ -235,7 +241,7 @@ struct StatusPill: View {
 
     private var color: Color {
         switch state {
-        case .running:
+        case .running, .externalRunning:
             return .green
         case .starting, .stopping:
             return .orange

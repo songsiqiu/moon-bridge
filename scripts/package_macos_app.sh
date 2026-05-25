@@ -11,7 +11,9 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 SERVICE_BIN="${RESOURCES_DIR}/moonbridge"
 LAUNCHER_BIN="${MACOS_DIR}/MoonBridgeLauncher"
 SWIFT_SRC_DIR="${ROOT_DIR}/desktop/macos/MoonBridgeLauncher/Sources"
+ICON_SVG="${ROOT_DIR}/desktop/macos/assets/icon.svg"
 TMP_DIR="$(mktemp -d)"
+ICONSET_DIR="${TMP_DIR}/MoonBridge.iconset"
 
 cleanup() {
   rm -rf "${TMP_DIR}"
@@ -55,11 +57,27 @@ swiftc "${SWIFT_SOURCES[@]}" \
 lipo -create "${TMP_DIR}/MoonBridgeLauncher-arm64" "${TMP_DIR}/MoonBridgeLauncher-x86_64" -output "${LAUNCHER_BIN}"
 chmod 755 "${LAUNCHER_BIN}"
 
+echo "Building app icon..."
+mkdir -p "${ICONSET_DIR}"
+sips -s format png -z 16 16 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_16x16.png" >/dev/null
+sips -s format png -z 32 32 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_16x16@2x.png" >/dev/null
+sips -s format png -z 32 32 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_32x32.png" >/dev/null
+sips -s format png -z 64 64 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_32x32@2x.png" >/dev/null
+sips -s format png -z 128 128 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_128x128.png" >/dev/null
+sips -s format png -z 256 256 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_128x128@2x.png" >/dev/null
+sips -s format png -z 256 256 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_256x256.png" >/dev/null
+sips -s format png -z 512 512 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_256x256@2x.png" >/dev/null
+sips -s format png -z 512 512 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_512x512.png" >/dev/null
+sips -s format png -z 1024 1024 "${ICON_SVG}" --out "${ICONSET_DIR}/icon_512x512@2x.png" >/dev/null
+iconutil -c icns "${ICONSET_DIR}" -o "${RESOURCES_DIR}/MoonBridge.icns"
+
 cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>CFBundleIconFile</key>
+  <string>MoonBridge</string>
   <key>CFBundleDevelopmentRegion</key>
   <string>zh_CN</string>
   <key>CFBundleDisplayName</key>

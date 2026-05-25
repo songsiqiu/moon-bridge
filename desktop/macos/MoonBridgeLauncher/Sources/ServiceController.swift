@@ -20,6 +20,7 @@ final class ServiceController: ObservableObject {
     private var process: Process?
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
+    private var externalProcessID: Int32?
 
     init() {
         let fm = FileManager.default
@@ -31,10 +32,16 @@ final class ServiceController: ObservableObject {
         logURL = supportDir.appendingPathComponent("moonbridge.log")
         settings = Self.loadSettings(from: settingsURL)
         prepareSupportFiles()
+        refreshPortOwner()
     }
 
     var serviceURL: String {
-        "http://\(settings.listenAddr)"
+        "http://\(effectiveListenAddr)"
+    }
+
+    private var effectiveListenAddr: String {
+        let addr = settings.listenAddr.trimmed
+        return addr.isEmpty ? "127.0.0.1:38440" : addr
     }
 
     func saveSettings() {
@@ -58,6 +65,17 @@ final class ServiceController: ObservableObject {
 
         do {
             try validateSettings()
+            if let owner = portOwner(for: effectiveListenAddr) {
+                if owner.isMoonBridge {
+                    externalProcessID = owner.pid
+                    state = .externalRunning(pid: owner.pid)
+                    message = "已有 Moon Bridge 服务在运行，可直接关闭。"
+                    appendLog("检测到已有 Moon Bridge 服务占用 \(effectiveListenAddr)，PID \(owner.pid)。\n")
+                    return
+                }
+                throw LauncherError.invalidConfig("监听地址已被其他程序占用，PID \(owner.pid)。")
+            }
+
             try prepareSupportFilesThrowing()
             try renderedConfig().write(to: configURL, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
@@ -121,21 +139,34 @@ final class ServiceController: ObservableObject {
     }
 
     func stop() {
-        guard let task = process else {
+        if let task = process {
+            state = .stopping
+            message = "正在关闭服务..."
+            task.terminate()
+
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if task.isRunning {
+                    kill(task.processIdentifier, SIGKILL)
+                }
+            }
+            return
+        }
+
+        if let pid = externalProcessID ?? state.pid {
+            state = .stopping
+            message = "正在关闭已有服务..."
+            terminateExternalMoonBridge(pid: pid)
+            return
+        }
+
+        refreshPortOwner()
+        guard state.isRunning else {
             state = .stopped
             message = "服务没有在运行。"
             return
         }
-        state = .stopping
-        message = "正在关闭服务..."
-        task.terminate()
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if task.isRunning {
-                kill(task.processIdentifier, SIGKILL)
-            }
-        }
+        stop()
     }
 
     func openConfigFile() {
@@ -151,6 +182,21 @@ final class ServiceController: ObservableObject {
     func terminateOnQuit() {
         if let task = process, task.isRunning {
             task.terminate()
+        }
+    }
+
+    func refreshPortOwner() {
+        guard process == nil else {
+            return
+        }
+        if let owner = portOwner(for: effectiveListenAddr), owner.isMoonBridge {
+            externalProcessID = owner.pid
+            state = .externalRunning(pid: owner.pid)
+            message = "已有 Moon Bridge 服务在运行。"
+        } else if case .externalRunning = state {
+            externalProcessID = nil
+            state = .stopped
+            message = "服务没有在运行。"
         }
     }
 
@@ -189,9 +235,71 @@ final class ServiceController: ObservableObject {
         throw LauncherError.serviceBinaryMissing
     }
 
+    private func terminateExternalMoonBridge(pid: Int32) {
+        guard let owner = portOwner(for: effectiveListenAddr), owner.pid == pid, owner.isMoonBridge else {
+            externalProcessID = nil
+            state = .stopped
+            message = "服务没有在运行。"
+            return
+        }
+        kill(pid, SIGTERM)
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if let currentOwner = self.portOwner(for: self.effectiveListenAddr), currentOwner.pid == pid {
+                kill(pid, SIGKILL)
+            }
+            self.externalProcessID = nil
+            self.state = .stopped
+            self.message = "服务已关闭。"
+        }
+    }
+
+    private func portOwner(for address: String) -> PortOwner? {
+        let parts = address.split(separator: ":", maxSplits: 1).map(String.init)
+        guard let portText = parts.last, Int(portText) != nil else {
+            return nil
+        }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        task.arguments = ["-nP", "-iTCP:\(portText)", "-sTCP:LISTEN", "-F", "pc"]
+        let output = Pipe()
+        task.standardOutput = output
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let raw = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        var pid: Int32?
+        var command = ""
+        for line in raw.split(separator: "\n").map(String.init) {
+            if line.hasPrefix("p") {
+                pid = Int32(line.dropFirst())
+            } else if line.hasPrefix("c") {
+                command = String(line.dropFirst())
+            }
+        }
+        guard let pid else {
+            return nil
+        }
+        return PortOwner(pid: pid, command: command)
+    }
+
     private func validateSettings() throws {
-        let address = settings.listenAddr.trimmingCharacters(in: .whitespacesAndNewlines)
-        if address.isEmpty || !address.contains(":") {
+        if settings.listenAddr.trimmed.isEmpty {
+            settings.listenAddr = "127.0.0.1:38440"
+        }
+        let address = effectiveListenAddr
+        if !address.contains(":") {
             throw LauncherError.invalidConfig("本地监听地址需要类似 127.0.0.1:38440。")
         }
         if settings.routeAlias.trimmed.isEmpty {

@@ -29,10 +29,20 @@ struct ProviderSettings: Codable, Equatable {
     var model: String
 }
 
+struct PortOwner: Equatable {
+    var pid: Int32
+    var command: String
+
+    var isMoonBridge: Bool {
+        command.lowercased().contains("moonbridge") || command.lowercased().contains("moonbridg")
+    }
+}
+
 enum ServiceState: Equatable {
     case stopped
     case starting
     case running(pid: Int32)
+    case externalRunning(pid: Int32)
     case stopping
     case failed(String)
 
@@ -42,7 +52,7 @@ enum ServiceState: Equatable {
             return "未启动"
         case .starting:
             return "启动中"
-        case .running:
+        case .running, .externalRunning:
             return "运行中"
         case .stopping:
             return "关闭中"
@@ -55,7 +65,19 @@ enum ServiceState: Equatable {
         if case .running = self {
             return true
         }
+        if case .externalRunning = self {
+            return true
+        }
         return false
+    }
+
+    var pid: Int32? {
+        switch self {
+        case .running(let pid), .externalRunning(let pid):
+            return pid
+        default:
+            return nil
+        }
     }
 }
 

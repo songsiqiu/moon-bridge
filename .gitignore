@@ -47,6 +47,7 @@ docker-compose.yml
 # npm
 node_modules/
 build/
+dist/
 .wrangler/
 # WebUI build artifacts (source in webui/)
 

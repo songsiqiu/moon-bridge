@@ -84,8 +84,22 @@ struct MainView: View {
                 }
                 GridRow {
                     FieldLabel("最大输出")
-                    TextField("4096", text: $controller.settings.maxTokens)
+                    TextField("65536", text: $controller.settings.maxTokens)
                         .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    FieldLabel("系统提示")
+                    TextEditor(text: $controller.settings.systemPrompt)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(height: 80)
+                        .scrollContentBackground(.hidden)
+                        .padding(4)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor))
+                        )
                 }
             }
         }
@@ -238,6 +252,16 @@ struct ProviderCard: View {
                     GridRow {
                         FieldLabel("模型名")
                         TextField("model-name", text: $provider.model)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        FieldLabel("上下文")
+                        TextField("128000", text: $provider.contextWindow)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        FieldLabel("模型输出")
+                        TextField("65536", text: $provider.maxOutputTokens)
                             .textFieldStyle(.roundedBorder)
                     }
                     GridRow {

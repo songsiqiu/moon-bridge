@@ -3,14 +3,18 @@ import Foundation
 struct LauncherSettings: Codable, Equatable {
     var listenAddr: String = "127.0.0.1:38440"
     var routeAlias: String = "moonbridge"
-    var maxTokens: String = "4096"
+    var maxTokens: String = "65536"
+    var systemPrompt: String = "[System Reminder]: Please pay close attention to the system instructions, AGENTS.md files, and any other context provided. Follow them carefully and completely in your response.\n[User]:"
     var providers: [ProviderSettings] = [
         ProviderSettings(
+            id: ProviderSettings.defaultDeepSeekID,
             name: "deepseek",
             baseURL: "https://api.deepseek.com/anthropic",
             apiKey: "",
             version: "2023-06-01",
-            model: "deepseek-v4-pro"
+            model: "deepseek-v4-pro",
+            contextWindow: "1000000",
+            maxOutputTokens: "384000"
         )
     ]
     var activeProviderID: UUID = ProviderSettings.defaultDeepSeekID
@@ -24,7 +28,8 @@ struct LauncherSettings: Codable, Equatable {
 
         listenAddr = try container.decodeIfPresent(String.self, forKey: .listenAddr) ?? "127.0.0.1:38440"
         routeAlias = try container.decodeIfPresent(String.self, forKey: .routeAlias) ?? "moonbridge"
-        maxTokens = try container.decodeIfPresent(String.self, forKey: .maxTokens) ?? "4096"
+        maxTokens = try container.decodeIfPresent(String.self, forKey: .maxTokens) ?? "65536"
+        systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? "[System Reminder]: Please pay close attention to the system instructions, AGENTS.md files, and any other context provided. Follow them carefully and completely in your response.\n[User]:"
 
         if let newProviders = try container.decodeIfPresent([ProviderSettings].self, forKey: .providers), !newProviders.isEmpty {
             providers = newProviders
@@ -47,11 +52,14 @@ struct LauncherSettings: Codable, Equatable {
             }
             providers = migrated.isEmpty ? [
                 ProviderSettings(
+                    id: ProviderSettings.defaultDeepSeekID,
                     name: "deepseek",
                     baseURL: "https://api.deepseek.com/anthropic",
                     apiKey: "",
                     version: "2023-06-01",
-                    model: "deepseek-v4-pro"
+                    model: "deepseek-v4-pro",
+                    contextWindow: "1000000",
+                    maxOutputTokens: "384000"
                 )
             ] : migrated
 
@@ -74,6 +82,7 @@ struct LauncherSettings: Codable, Equatable {
         try container.encode(listenAddr, forKey: .listenAddr)
         try container.encode(routeAlias, forKey: .routeAlias)
         try container.encode(maxTokens, forKey: .maxTokens)
+        try container.encode(systemPrompt, forKey: .systemPrompt)
         try container.encode(providers, forKey: .providers)
         try container.encode(activeProviderID, forKey: .activeProviderID)
         try container.encodeIfPresent(visualProviderID, forKey: .visualProviderID)
@@ -81,6 +90,7 @@ struct LauncherSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case listenAddr, routeAlias, maxTokens
+        case systemPrompt
         case providers, activeProviderID, visualProviderID
         case activeProviderName, primaryProvider, visualProvider, enableVisualProvider
     }
@@ -108,16 +118,29 @@ struct ProviderSettings: Codable, Equatable, Identifiable {
     var apiKey: String
     var version: String
     var model: String
+    var contextWindow: String
+    var maxOutputTokens: String
 
     static let defaultDeepSeekID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
 
-    init(name: String, baseURL: String, apiKey: String, version: String, model: String) {
-        self.id = UUID()
+    init(
+        id: UUID = UUID(),
+        name: String,
+        baseURL: String,
+        apiKey: String,
+        version: String,
+        model: String,
+        contextWindow: String? = nil,
+        maxOutputTokens: String? = nil
+    ) {
+        self.id = id
         self.name = name
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.version = version
         self.model = model
+        self.contextWindow = contextWindow ?? Self.defaultContextWindow(baseURL: baseURL, model: model)
+        self.maxOutputTokens = maxOutputTokens ?? Self.defaultMaxOutputTokens(baseURL: baseURL, model: model)
     }
 
     // 旧格式解码（没有 UUID）时自动生成
@@ -129,10 +152,27 @@ struct ProviderSettings: Codable, Equatable, Identifiable {
         apiKey = try container.decode(String.self, forKey: .apiKey)
         version = try container.decodeIfPresent(String.self, forKey: .version) ?? "2023-06-01"
         model = try container.decode(String.self, forKey: .model)
+        contextWindow = try container.decodeIfPresent(String.self, forKey: .contextWindow)
+            ?? Self.defaultContextWindow(baseURL: baseURL, model: model)
+        maxOutputTokens = try container.decodeIfPresent(String.self, forKey: .maxOutputTokens)
+            ?? Self.defaultMaxOutputTokens(baseURL: baseURL, model: model)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, baseURL, apiKey, version, model
+        case id, name, baseURL, apiKey, version, model, contextWindow, maxOutputTokens
+    }
+
+    private static func defaultContextWindow(baseURL: String, model: String) -> String {
+        let marker = "\(baseURL) \(model)".lowercased()
+        if marker.contains("deepseek") { return "1000000" }
+        if marker.contains("kimi") || marker.contains("moonshot") { return "128000" }
+        return "200000"
+    }
+
+    private static func defaultMaxOutputTokens(baseURL: String, model: String) -> String {
+        let marker = "\(baseURL) \(model)".lowercased()
+        if marker.contains("deepseek") { return "384000" }
+        return "65536"
     }
 }
 
@@ -212,7 +252,9 @@ extension ProviderSettings {
             baseURL: baseURL.trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
             apiKey: apiKey.trimmed,
             version: version.trimmed.isEmpty ? "2023-06-01" : version.trimmed,
-            model: model.trimmed
+            model: model.trimmed,
+            contextWindow: contextWindow.trimmed,
+            maxOutputTokens: maxOutputTokens.trimmed
         )
     }
 }

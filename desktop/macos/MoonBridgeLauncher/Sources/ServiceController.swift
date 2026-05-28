@@ -54,7 +54,9 @@ final class ServiceController: ObservableObject {
                 baseURL: "",
                 apiKey: "",
                 version: "2023-06-01",
-                model: ""
+                model: "",
+                contextWindow: "200000",
+                maxOutputTokens: "65536"
             )
         )
     }
@@ -330,13 +332,16 @@ final class ServiceController: ObservableObject {
             if p.baseURL.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) 接口地址不能为空。") }
             if p.apiKey.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) API Key 不能为空。") }
             if p.model.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) 模型名不能为空。") }
+            if Int(p.contextWindow.trimmed) == nil { throw LauncherError.invalidConfig("\(label) 上下文窗口必须是数字。") }
+            if Int(p.maxOutputTokens.trimmed) == nil { throw LauncherError.invalidConfig("\(label) 模型输出 Tokens 必须是数字。") }
         }
     }
 
     // MARK: - Config generation
 
     private func renderedConfig() -> String {
-        let maxTokens = Int(settings.maxTokens.trimmed) ?? 4096
+        let maxTokens = Int(settings.maxTokens.trimmed) ?? 65536
+        let systemPrompt = settings.systemPrompt.trimmed
         let alias = settings.routeAlias.trimmed
         let active = settings.activeProvider.normalized
         let visualEnabled = settings.visualProviderID != nil
@@ -361,6 +366,7 @@ final class ServiceController: ObservableObject {
           deepseek_v4:
             config:
               reinforce_instructions: true
+              reinforce_prompt: \(yamlString(systemPrompt))
           visual:
             config:
               provider: \(yamlString(visProvName))
@@ -399,6 +405,7 @@ final class ServiceController: ObservableObject {
         defaults:
           model: \(yamlString(alias))
           max_tokens: \(maxTokens)
+          system_prompt: \(yamlString(systemPrompt))
 
         """
 
@@ -411,8 +418,9 @@ final class ServiceController: ObservableObject {
             writtenModels.insert(n.model)
 
             let isDeepSeek = n.baseURL.lowercased().contains("deepseek")
-            let contextWindow = isDeepSeek ? 1000000 : 200000
-            let maxOutput = isDeepSeek ? 384000 : 64000
+                || n.model.lowercased().contains("deepseek")
+            let contextWindow = Int(n.contextWindow.trimmed) ?? 200000
+            let maxOutput = Int(n.maxOutputTokens.trimmed) ?? 65536
             let deepseekExt = isDeepSeek ? "true" : "false"
 
             yaml += """
@@ -420,6 +428,7 @@ final class ServiceController: ObservableObject {
                 context_window: \(contextWindow)
                 max_output_tokens: \(maxOutput)
                 display_name: \(yamlString(n.model))
+                base_instructions: \(yamlString(systemPrompt))
                 default_reasoning_level: "high"
                 supported_reasoning_levels:
                   - effort: "high"

@@ -39,6 +39,30 @@ type ConfigStore interface {
 	// ExportYAML serializes the current DB state as YAML bytes.
 	// If includeSecrets is false, API key values are masked.
 	ExportYAML(includeSecrets bool) ([]byte, error)
+
+	// SaveProfile saves the current configuration as a named profile.
+	SaveProfile(name string, description string, cfg *config.Config) error
+
+	// LoadProfile loads a named profile into the active configuration tables.
+	LoadProfile(name string) error
+
+	// ListProfiles returns all saved profiles with metadata.
+	ListProfiles() ([]ProfileMeta, error)
+
+	// DeleteProfile removes a named profile.
+	DeleteProfile(name string) error
+
+	// GetActiveProfile returns the name of the currently active profile, if any.
+	GetActiveProfile() (string, error)
+
+	// SetActiveProfile marks a profile as active without loading its config.
+	SetActiveProfile(name string) error
+
+	// ClearActiveProfile clears the active profile marker.
+	ClearActiveProfile() error
+
+	// RenameProfile renames a profile.
+	RenameProfile(oldName string, newName string) error
 }
 
 // ProviderRow represents a row in the config_store_providers table.
@@ -112,4 +136,13 @@ type ChangeRow struct {
 	Revision   int
 	CreatedAt  string
 	AppliedAt  string
+}
+
+// ProfileMeta holds metadata about a saved configuration profile.
+type ProfileMeta struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	IsActive    bool   `json:"is_active"`
 }

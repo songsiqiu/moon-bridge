@@ -44,6 +44,35 @@ final class ServiceController: ObservableObject {
         return addr.isEmpty ? "127.0.0.1:38440" : addr
     }
 
+    // MARK: - Provider management
+
+    func addProvider() {
+        let newName = "provider-\(settings.providers.count + 1)"
+        settings.providers.append(
+            ProviderSettings(
+                name: newName,
+                baseURL: "",
+                apiKey: "",
+                version: "2023-06-01",
+                model: ""
+            )
+        )
+    }
+
+    func deleteProvider(_ id: UUID) {
+        guard settings.providers.count > 1 else { return }
+        settings.providers.removeAll { $0.id == id }
+
+        if settings.activeProviderID == id {
+            settings.activeProviderID = settings.providers[0].id
+        }
+        if settings.visualProviderID == id {
+            settings.visualProviderID = nil
+        }
+    }
+
+    // MARK: - Settings
+
     func saveSettings() {
         do {
             try prepareSupportFilesThrowing()
@@ -58,10 +87,10 @@ final class ServiceController: ObservableObject {
         }
     }
 
+    // MARK: - Start / Stop
+
     func start() {
-        guard !state.isRunning else {
-            return
-        }
+        guard !state.isRunning else { return }
 
         do {
             try validateSettings()
@@ -102,9 +131,7 @@ final class ServiceController: ObservableObject {
 
             task.terminationHandler = { [weak self] proc in
                 Task { @MainActor in
-                    guard let self else {
-                        return
-                    }
+                    guard let self else { return }
                     self.detachLogPipes()
                     self.process = nil
                     if case .stopping = self.state {
@@ -186,9 +213,7 @@ final class ServiceController: ObservableObject {
     }
 
     func refreshPortOwner() {
-        guard process == nil else {
-            return
-        }
+        guard process == nil else { return }
         if let owner = portOwner(for: effectiveListenAddr), owner.isMoonBridge {
             externalProcessID = owner.pid
             state = .externalRunning(pid: owner.pid)
@@ -199,6 +224,8 @@ final class ServiceController: ObservableObject {
             message = "服务没有在运行。"
         }
     }
+
+    // MARK: - Private helpers
 
     private static func loadSettings(from url: URL) -> LauncherSettings {
         guard let data = try? Data(contentsOf: url),
@@ -257,9 +284,7 @@ final class ServiceController: ObservableObject {
 
     private func portOwner(for address: String) -> PortOwner? {
         let parts = address.split(separator: ":", maxSplits: 1).map(String.init)
-        guard let portText = parts.last, Int(portText) != nil else {
-            return nil
-        }
+        guard let portText = parts.last, Int(portText) != nil else { return nil }
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
@@ -271,33 +296,24 @@ final class ServiceController: ObservableObject {
         do {
             try task.run()
             task.waitUntilExit()
-        } catch {
-            return nil
-        }
+        } catch { return nil }
 
         let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let raw = String(data: data, encoding: .utf8) else {
-            return nil
-        }
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
         var pid: Int32?
         var command = ""
         for line in raw.split(separator: "\n").map(String.init) {
-            if line.hasPrefix("p") {
-                pid = Int32(line.dropFirst())
-            } else if line.hasPrefix("c") {
-                command = String(line.dropFirst())
-            }
+            if line.hasPrefix("p") { pid = Int32(line.dropFirst()) }
+            else if line.hasPrefix("c") { command = String(line.dropFirst()) }
         }
-        guard let pid else {
-            return nil
-        }
+        guard let pid else { return nil }
         return PortOwner(pid: pid, command: command)
     }
 
+    // MARK: - Validation
+
     private func validateSettings() throws {
-        if settings.listenAddr.trimmed.isEmpty {
-            settings.listenAddr = "127.0.0.1:38440"
-        }
+        if settings.listenAddr.trimmed.isEmpty { settings.listenAddr = "127.0.0.1:38440" }
         let address = effectiveListenAddr
         if !address.contains(":") {
             throw LauncherError.invalidConfig("本地监听地址需要类似 127.0.0.1:38440。")
@@ -308,35 +324,25 @@ final class ServiceController: ObservableObject {
         if Int(settings.maxTokens.trimmed) == nil {
             throw LauncherError.invalidConfig("最大输出 Tokens 必须是数字。")
         }
-        try validateProvider(settings.primaryProvider, label: "主接口", requiresAPIKey: true)
-        if settings.enableVisualProvider {
-            try validateProvider(settings.visualProvider, label: "视觉接口", requiresAPIKey: true)
+        for (i, p) in settings.providers.enumerated() {
+            let label = "[\(i + 1)] \(p.name.trimmed.isEmpty ? "未命名" : p.name)"
+            if p.name.trimmed.isEmpty { throw LauncherError.invalidConfig("服务商 #\(i + 1) 名称不能为空。") }
+            if p.baseURL.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) 接口地址不能为空。") }
+            if p.apiKey.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) API Key 不能为空。") }
+            if p.model.trimmed.isEmpty { throw LauncherError.invalidConfig("\(label) 模型名不能为空。") }
         }
     }
 
-    private func validateProvider(_ provider: ProviderSettings, label: String, requiresAPIKey: Bool) throws {
-        if provider.name.trimmed.isEmpty {
-            throw LauncherError.invalidConfig("\(label)名称不能为空。")
-        }
-        if provider.baseURL.trimmed.isEmpty {
-            throw LauncherError.invalidConfig("\(label)地址不能为空。")
-        }
-        if requiresAPIKey && provider.apiKey.trimmed.isEmpty {
-            throw LauncherError.invalidConfig("\(label) Key 不能为空。")
-        }
-        if provider.model.trimmed.isEmpty {
-            throw LauncherError.invalidConfig("\(label)模型名不能为空。")
-        }
-    }
+    // MARK: - Config generation
 
     private func renderedConfig() -> String {
-        let primary = settings.primaryProvider.normalized
-        let visual = settings.visualProvider.normalized
-        let visualEnabled = settings.enableVisualProvider
         let maxTokens = Int(settings.maxTokens.trimmed) ?? 4096
         let alias = settings.routeAlias.trimmed
-        let visualProviderName = visualEnabled ? visual.name : primary.name
-        let visualModelName = visualEnabled ? visual.model : primary.model
+        let active = settings.activeProvider.normalized
+        let visualEnabled = settings.visualProviderID != nil
+        let visual = settings.visualProvider?.normalized
+        let visProvName = visual?.name ?? active.name
+        let visModelName = visual?.model ?? active.model
 
         var yaml = """
         mode: "Transform"
@@ -357,8 +363,8 @@ final class ServiceController: ObservableObject {
               reinforce_instructions: true
           visual:
             config:
-              provider: \(yamlString(visualProviderName))
-              model: \(yamlString(visualModelName))
+              provider: \(yamlString(visProvName))
+              model: \(yamlString(visModelName))
               max_rounds: 4
               max_tokens: 2048
           db_sqlite:
@@ -394,84 +400,77 @@ final class ServiceController: ObservableObject {
           model: \(yamlString(alias))
           max_tokens: \(maxTokens)
 
-        models:
-          \(yamlKey(primary.model)):
-            context_window: 1000000
-            max_output_tokens: 384000
-            display_name: \(yamlString(primary.model))
-            default_reasoning_level: "high"
-            supported_reasoning_levels:
-              - effort: "high"
-                description: "High reasoning effort"
-              - effort: "xhigh"
-                description: "Extra high reasoning effort"
-            supports_reasoning_summaries: true
-            default_reasoning_summary: "auto"
-            extensions:
-              deepseek_v4:
-                enabled: true
-              visual:
-                enabled: \(visualEnabled ? "true" : "false")
-
         """
 
-        if visualEnabled && visual.model != primary.model {
+        // Models section: all provider models
+        var writtenModels = Set<String>()
+        yaml += "models:\n"
+        for p in settings.providers {
+            let n = p.normalized
+            guard !n.model.isEmpty, !writtenModels.contains(n.model) else { continue }
+            writtenModels.insert(n.model)
+
+            let isDeepSeek = n.baseURL.lowercased().contains("deepseek")
+            let contextWindow = isDeepSeek ? 1000000 : 200000
+            let maxOutput = isDeepSeek ? 384000 : 64000
+            let deepseekExt = isDeepSeek ? "true" : "false"
+
             yaml += """
-              \(yamlKey(visual.model)):
-                context_window: 128000
-                max_output_tokens: 64000
+              \(yamlKey(n.model)):
+                context_window: \(contextWindow)
+                max_output_tokens: \(maxOutput)
+                display_name: \(yamlString(n.model))
+                default_reasoning_level: "high"
+                supported_reasoning_levels:
+                  - effort: "high"
+                    description: "High reasoning effort"
+                  - effort: "xhigh"
+                    description: "Extra high reasoning effort"
+                supports_reasoning_summaries: true
+                default_reasoning_summary: "auto"
+                extensions:
+                  deepseek_v4:
+                    enabled: \(deepseekExt)
+                  visual:
+                    enabled: \(visualEnabled ? "true" : "false")
 
             """
         }
 
-        yaml += """
-        providers:
-          \(yamlKey(primary.name)):
-            base_url: \(yamlString(primary.baseURL))
-            api_key: \(yamlString(primary.apiKey))
-            version: \(yamlString(primary.version))
-            user_agent: "moonbridge/desktop"
-            offers:
-              - model: \(yamlString(primary.model))
-
-        """
-
-        if visualEnabled && visual.name == primary.name && visual.model != primary.model {
-            yaml += "      - model: \(yamlString(visual.model))\n\n"
-        }
-
-        if visualEnabled && visual.name != primary.name {
+        // Providers section
+        yaml += "providers:\n"
+        for p in settings.providers {
+            let n = p.normalized
             yaml += """
-              \(yamlKey(visual.name)):
-                base_url: \(yamlString(visual.baseURL))
-                api_key: \(yamlString(visual.apiKey))
-                version: \(yamlString(visual.version))
+              \(yamlKey(n.name)):
+                base_url: \(yamlString(n.baseURL))
+                api_key: \(yamlString(n.apiKey))
+                version: \(yamlString(n.version))
                 user_agent: "moonbridge/desktop"
                 offers:
-                  - model: \(yamlString(visual.model))
+                  - model: \(yamlString(n.model))
 
             """
         }
 
+        // Routes section
+        yaml += "routes:\n"
         yaml += """
-        routes:
           \(yamlKey(alias)):
-            model: \(yamlString(primary.model))
-            provider: \(yamlString(primary.name))
+            model: \(yamlString(active.model))
+            provider: \(yamlString(active.name))
 
         """
         return yaml
     }
 
+    // MARK: - Log pipe
+
     private func attachLogPipe(_ handle: FileHandle) {
         handle.readabilityHandler = { [weak self] fileHandle in
             let data = fileHandle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else {
-                return
-            }
-            Task { @MainActor in
-                self?.appendLog(chunk)
-            }
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            Task { @MainActor in self?.appendLog(chunk) }
         }
     }
 
@@ -484,9 +483,7 @@ final class ServiceController: ObservableObject {
 
     private func appendLog(_ chunk: String) {
         logs += chunk
-        if logs.count > 20_000 {
-            logs = String(logs.suffix(20_000))
-        }
+        if logs.count > 20_000 { logs = String(logs.suffix(20_000)) }
         if let data = chunk.data(using: .utf8) {
             if !logURL.fileExists {
                 FileManager.default.createFile(atPath: logURL.path, contents: nil)

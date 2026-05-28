@@ -107,6 +107,15 @@ func registerRoutes(mux *http.ServeMux, r *Router) {
 	mux.HandleFunc("POST /config/import", r.handlePostConfigImport)
 	mux.HandleFunc("POST /config/validate", r.handlePostConfigValidate)
 
+	// Profile endpoints
+	mux.HandleFunc("GET /profiles", r.handleListProfiles)
+	mux.HandleFunc("GET /profiles/active", r.handleGetActiveProfile)
+	mux.HandleFunc("GET /profiles/{name}", r.handleGetProfile)
+	mux.HandleFunc("POST /profiles/{name}", r.handleSaveProfile)
+	mux.HandleFunc("POST /profiles/{name}/activate", r.handleActivateProfile)
+	mux.HandleFunc("DELETE /profiles/{name}", r.handleDeleteProfile)
+	mux.HandleFunc("PATCH /profiles/{name}/rename", r.handleRenameProfile)
+
 	// Changes endpoints
 	mux.HandleFunc("GET /changes", r.handleListChanges)
 	mux.HandleFunc("POST /changes/apply", r.handlePostChangesApply)

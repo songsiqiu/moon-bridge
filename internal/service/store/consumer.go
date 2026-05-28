@@ -115,6 +115,17 @@ func (c *ConfigStoreConsumer) Tables() []db.TableSpec {
 )`,
 		},
 		{
+			Name: "profiles",
+			Schema: `CREATE TABLE IF NOT EXISTS {{table}} (
+    name        TEXT PRIMARY KEY,
+    description TEXT DEFAULT '',
+    config      TEXT NOT NULL,
+    is_active   INTEGER DEFAULT 0,
+    created_at  TEXT,
+    updated_at  TEXT
+)`,
+		},
+		{
 			Name: "schema_migrations",
 			Schema: `CREATE TABLE IF NOT EXISTS {{table}} (
     version     INTEGER PRIMARY KEY,

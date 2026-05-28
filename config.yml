@@ -3,6 +3,9 @@ mode: "Transform"
 server:
   addr: "127.0.0.1:38440"
 
+persistence:
+  active_provider: "db_sqlite"
+
 cache:
   mode: "explicit"
   ttl: "5m"
@@ -18,6 +21,18 @@ extensions:
       model: "kimi-for-coding"
       max_rounds: 4
       max_tokens: 2048
+  db_sqlite:
+    enabled: true
+    config:
+      path: "./data/moonbridge.db"
+      wal: true
+      busy_timeout_ms: 5000
+      max_open_conns: 1
+  metrics:
+    enabled: true
+    config:
+      default_limit: 100
+      max_limit: 1000
 
 models:
   deepseek-v4-pro:
